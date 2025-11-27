@@ -1,1 +1,6 @@
 ## List of libraries
+
+fastapi
+uvicorn
+sqlalchemy
+pydantic
