@@ -30,7 +30,7 @@ def read_root():
 
 # Post /players/ -> Create new player
 @app.post("players/", response_model=schemas.Player)
-def create_player(player: schemas.PlayerCreate, db: Session = Depends(get_db())):
+def create_player(player: schemas.PlayerCreate, db: Session = Depends(get_db)):
     # Does the player already exists?
     existing_player = db.query(models.Player).filter(models.Player.name == player.name).first()
     if existing_player:

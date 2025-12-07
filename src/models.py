@@ -35,9 +35,10 @@ class Player(Base):
     matches = relationship("Match", secondary="match_players", back_populates="players")
 
 class Match(Base):
+    __tablename__ = "matches"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False)
     result = Column(String, nullable=False) # Stores team A, team B or draw
 
     # Relationship: a match as many players
-    players= relationship("player", secondary="match_players", back_populates="matches")
+    players= relationship("Player", secondary="match_players", back_populates="matches")
