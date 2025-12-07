@@ -15,7 +15,7 @@ def main(page: ft.Page):
     # Functions ( Communicate with API)
 
     def create_player(e):
-        name = name.input.value
+        name = name_input.value
         if not name:
             page.snack_bar = ft.SnackBar(ft.Text("Escreve um nome!"))
             page.snack_bar.open = True
@@ -42,4 +42,33 @@ def main(page: ft.Page):
     # --- UI ---
 
     # Title
-    title = ft.Text("Gestão de liga ⚽", size = 30, weight="bold")
+    title = ft.Text("Gestão de liga ⚽", size = 30, weight=ft.FontWeight.BOLD)
+
+    # Text Field
+    name_input = ft.TextField(label="Nome do jogador", hint_text="Ex: Paulo Ferreira")
+
+    # Big button
+    btn_create = ft.ElevatedButton(
+        text="Criar Jogador",
+        on_click=create_player,
+        width=300,
+        height=50
+    )
+
+    # Add everything to the page
+    page.add(
+        ft.Column(
+            [
+                ft.Container(height=20), # Empty space
+                title,
+                ft.Container(height=20),
+                name_input,
+                ft.Container(height=10),
+                btn_create,
+            ],
+            horizontal_alignment = ft.CrossAxisAlignment.CENTER,
+        )
+    )
+
+    # Run app
+    ft.app(target=main)
