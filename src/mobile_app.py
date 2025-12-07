@@ -42,3 +42,4 @@ def main(page: ft.Page):
     # --- UI ---
 
     # Title
+    title = ft.Text("Gestão de liga ⚽", size = 30, weight="bold")
