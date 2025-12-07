@@ -37,6 +37,8 @@ class MatchCreate(MatchBase):
     # When creating a match, we receive a list of player ids for each team
     team_a_players: List[int]
     team_b_players: List[int]
+    # New field
+    is_double_points: bool = False
 
 class Match(MatchBase):
     id: int

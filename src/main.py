@@ -55,7 +55,7 @@ def read_players(skip: int = 0, limit: int = 100, db: Session = Depends(get_db))
 @app.post("/matches/", response_model=schemas.Match)
 def create_match(match: schemas.MatchCreate, db: Session = Depends(get_db)):
     # Create the Match Record ("Header")
-    db_match = models.Match(date=match.date, result=match.result)
+    db_match = models.Match(date=match.date, result=match.result, is_double_points=match.is_double_points)
 
     db.add(db_match)
     db.commit()
@@ -154,7 +154,10 @@ def get_league_table(db: Session = Depends(get_db)):
             is_draw = False
             is_loss = False
 
-            # Lógica explicita para evitar erros de aninhamento
+            # Calculate multiplier
+            multiplier = 2 if match.is_double_points else 1
+
+            # Logic to calculate results
             if match.result == "DRAW":
                 is_draw = True
                 points_to_add = 2
@@ -163,7 +166,7 @@ def get_league_table(db: Session = Depends(get_db)):
                 if team == "A":
                     is_win = True
                     points_to_add = 3
-                else: # Jogou na B e ganhou a A -> Derrota
+                else: # -> Derrota equipa B
                     is_loss = True
                     points_to_add = 1
 
@@ -171,7 +174,7 @@ def get_league_table(db: Session = Depends(get_db)):
                 if team == "B":
                     is_win = True
                     points_to_add = 3
-                else: # Jogou na A e ganhou a B -> Derrota
+                else: # -> Derrota equipa A
                     is_loss = True
                     points_to_add = 1
 
@@ -191,3 +194,17 @@ def get_league_table(db: Session = Depends(get_db)):
 
     print("--- CÁLCULO TERMINADO ---")
     return standings
+
+# DELETE /reset/ -> DANGER ZONE: Clears all matches to start new season
+@app.delete("/reset/")
+def reset_championship(db: Session = Depends(get_db)):
+    # 1. Delete all links between players and matches
+    db.query(models.MatchPlayer).delete()
+
+    # 2. Delete all matches
+    db.query(models.Match).delete()
+
+    # 3. Commit changes (Save the empty state)
+    db.commit()
+
+    return {"message": "Campeonato reiniciado com sucesso! Os jogadores foram mantidos."}

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, Enum, Boolean
 from sqlalchemy.orm import relationship
 import enum
 from .database import Base
@@ -39,6 +39,8 @@ class Match(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False)
     result = Column(String, nullable=False) # Stores team A, team B or draw
+    # New column
+    is_double_points = Column(Boolean, default=False)
 
     # Relationship: a match as many players
     players= relationship("Player", secondary="match_players", back_populates="matches")
