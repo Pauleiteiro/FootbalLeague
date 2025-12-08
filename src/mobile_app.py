@@ -60,7 +60,7 @@ def main(page: ft.Page):
     column_team_b = ft.Column()
 
     # Administrative Controls
-    dropdown_remove_champion = ft.Dropdown(label="Remover Título de quem?", expand=True)
+    dropdown_remove_champion = ft.Dropdown(label="Remover título de quem?", expand=True)
 
     # Goalkeeper selection
     dropdown_gr_a = ft.Dropdown(label="GR Equipa A (Não Paga)", expand=True)
@@ -198,7 +198,7 @@ def main(page: ft.Page):
             ], alignment="spaceBetween"))
 
         column_debt_list.controls.append(ft.Divider())
-        column_debt_list.controls.append(ft.Text(f"Total em Falta: {total_debt:.2f}€", color="red", weight="bold"))
+        column_debt_list.controls.append(ft.Text(f"Total em falta: {total_debt:.2f}€", color="red", weight="bold"))
         page.update()
 
     def submit_payment(e):
@@ -300,7 +300,7 @@ def main(page: ft.Page):
     def close_season_handler(e):
         """Closes the season automatically."""
         if btn_close_season.text == "Terminar campeonato":
-            btn_close_season.text = "Confirmas o Campeão Automático?"
+            btn_close_season.text = "Confirmas?"
             btn_close_season.bgcolor = "orange"
             page.update()
             return
@@ -399,7 +399,7 @@ def main(page: ft.Page):
             show_toast("Logado como manager ⚽")
             auth_success = True
         else:
-            show_toast("Senha errada", "red")
+            show_toast("Password errada", "red")
 
         if auth_success:
             if dlg_login: page.close(dlg_login)
@@ -419,9 +419,9 @@ def main(page: ft.Page):
     # --- Action Buttons ---
     btn_submit_payment = ft.ElevatedButton("Registar", on_click=submit_payment)
     btn_charge_monthly = ft.ElevatedButton("Cobrar Mensalidades (14€)", on_click=charge_monthly_fee, bgcolor="blue", color="white")
-    btn_submit_game = ft.ElevatedButton("Gravar Jogo (3€)", on_click=submit_game)
+    btn_submit_game = ft.ElevatedButton("Gravar Jogo", on_click=submit_game)
     btn_create_player = ft.ElevatedButton("Criar", on_click=create_player)
-    btn_remove_champion = ft.ElevatedButton("Remover Título", on_click=remove_champion_handler, color="orange")
+    btn_remove_champion = ft.ElevatedButton("Remover título", on_click=remove_champion_handler, color="orange")
     btn_close_season = ft.ElevatedButton("Terminar campeonato", bgcolor="red", color="white", on_click=close_season_handler)
 
     # --- App Bar Icons ---
@@ -489,7 +489,7 @@ def main(page: ft.Page):
         if state["role"] in ["admin", "treasurer"]:
             refresh_treasury()
             tabs.append(ft.Tab(text="Tesouraria", icon=ft.Icons.EURO, content=ft.Column([
-                ft.Text("Gestão de Dívidas", size=20),
+                ft.Text("Gestão de dívidas", size=20),
                 ft.Row([dropdown_payer, input_payment_amount], alignment="center"),
                 btn_submit_payment,
                 ft.Divider(),
