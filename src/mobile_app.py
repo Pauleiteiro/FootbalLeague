@@ -575,4 +575,4 @@ def main(page: ft.Page):
     build_layout()
 
 # Run the app
-app = ft.app(target=main, export_asgi_app=True, assets_dir="src/assets", web_renderer=ft.WebRenderer.HTML)
+app = ft.app(target=main, export_asgi_app=True, assets_dir="src/assets")
