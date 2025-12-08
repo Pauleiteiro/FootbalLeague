@@ -14,7 +14,7 @@ API_URL = "https://tercas-fc-api.onrender.com"
 # SECURITY: Read passwords from Environment Variables
 # If not set (local testing), defaults to "1234", "money", "bola"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASS", "1234")
-TREASURER_PASSWORD = os.getenv("TREASURER_PASS", "money")
+TREASURER_PASSWORD = os.getenv("TREASURER_PASS", "dinheiro")
 MANAGER_PASSWORD = os.getenv("MANAGER_PASS", "bola")
 
 # =============================================================================
@@ -27,6 +27,10 @@ def main(page: ft.Page):
     page.padding = 10
 
     state = {"role": None}
+
+    # Control admin window
+    dlg_login = None
+
     team_a_checkboxes = []
     team_b_checkboxes = []
 
@@ -43,7 +47,8 @@ def main(page: ft.Page):
     column_team_a = ft.Column()
     column_team_b = ft.Column()
 
-    dropdown_champion = ft.Dropdown(label="Quem ganhou a época?")
+    # (Nota: O dropdown de escolher campeão foi removido do UI porque agora é automático,
+    # mas mantive o de remover título caso seja preciso corrigir)
     dropdown_remove_champion = ft.Dropdown(label="Remover Título de quem?", expand=True)
 
     dropdown_gr_a = ft.Dropdown(label="GR Equipa A (Não Paga)", expand=True)
@@ -53,15 +58,18 @@ def main(page: ft.Page):
         label="Resultado",
         options=[ft.dropdown.Option("TEAM_A", "Vitória A"), ft.dropdown.Option("TEAM_B", "Vitória B"), ft.dropdown.Option("DRAW", "Empate")]
     )
-    checkbox_double_points = ft.Checkbox(label="Pontos x2?", fill_color="yellow")
+    checkbox_double_points = ft.Checkbox(label="Último jogo da época? Pontos a dobrar!", fill_color="yellow")
+
+    # Criação de Jogador (Adicionei a checkbox Fixo)
     input_new_player = ft.TextField(label="Novo Jogador")
+    checkbox_is_fixed = ft.Checkbox(label="É Fixo? (Paga Mensalidade)", value=True)
 
     # History
     dropdown_history_season = ft.Dropdown(label="Escolher Época", expand=True)
     container_history_table = ft.Row(scroll=ft.ScrollMode.ALWAYS)
 
-    # Login
-    input_password = ft.TextField(label="Senha", password=True, on_submit=lambda e: login_handler(e))
+    # Login Input
+    input_password = ft.TextField(label="Password", password=True, on_submit=lambda e: login_handler(e))
 
     # =========================================================================
     # HELPERS
@@ -111,9 +119,12 @@ def main(page: ft.Page):
             form_data = p.get('form', [])
             form_visuals = format_form_icons(form_data)
 
+            # Mostra (F) se for fixo na tabela
+            name_display = f"{p['name']} (F)" if p.get('is_fixed') else p['name']
+
             table_leaderboard.rows.append(ft.DataRow(cells=[
                 ft.DataCell(ft.Text(str(i+1))),
-                ft.DataCell(ft.Text(p['name'], weight="bold", size=13)),
+                ft.DataCell(ft.Text(name_display, weight="bold", size=13)),
                 ft.DataCell(ft.Text(str(p['points']), color="yellow", weight="bold")),
                 ft.DataCell(ft.Text(str(p['games_played']))),
                 # Form Cell
@@ -130,7 +141,7 @@ def main(page: ft.Page):
         champions = fetch_api("champions/")
         column_new_champions.controls.clear(); dropdown_remove_champion.options.clear()
         if champions:
-            column_new_champions.controls.append(ft.Text("NOVOS CAMPEÕES (App):", weight="bold", size=12, color="green"))
+            column_new_champions.controls.append(ft.Text("NOVOS CAMPEÕES:", weight="bold", size=12, color="green"))
             for c in champions:
                 trophies = "🏆" * c['titles']
                 column_new_champions.controls.append(ft.Row([ft.Text(f"{c['name'].upper()} =", weight="bold"), ft.Text(trophies)], spacing=5))
@@ -146,7 +157,14 @@ def main(page: ft.Page):
             dropdown_payer.options.append(ft.dropdown.Option(key=str(p['id']), text=p['name']))
             balance = p['balance']; color = "red" if balance < 0 else "green"
             if balance < 0: total_debt += balance
-            column_debt_list.controls.append(ft.Row([ft.Text(p['name'], weight="bold"), ft.Text(f"{balance:.2f}€", color=color, weight="bold")], alignment="spaceBetween"))
+
+            type_label = "Fixo" if p.get('is_fixed') else "Convidado"
+
+            column_debt_list.controls.append(ft.Row([
+                ft.Text(f"{p['name']} ({type_label})", weight="bold"),
+                ft.Text(f"{balance:.2f}€", color=color, weight="bold")
+            ], alignment="spaceBetween"))
+
         column_debt_list.controls.append(ft.Divider())
         column_debt_list.controls.append(ft.Text(f"Total em Falta: {total_debt:.2f}€", color="red", weight="bold"))
         page.update()
@@ -159,12 +177,18 @@ def main(page: ft.Page):
             show_toast("Aceite!", "green"); input_payment_amount.value=""; refresh_treasury()
         except: show_toast("Erro", "red")
 
+    def charge_monthly_fee(e):
+        try:
+            res = requests.post(f"{API_URL}/players/charge_monthly")
+            show_toast(f"Mensalidades lançadas! {res.json()['message']}", "orange")
+            refresh_treasury()
+        except: show_toast("Erro ao cobrar", "red")
+
     # -- Admin --
     def refresh_admin_inputs():
         players = fetch_api("players/")
         column_team_a.controls.clear(); column_team_b.controls.clear()
         team_a_checkboxes.clear(); team_b_checkboxes.clear()
-        dropdown_champion.options.clear()
         dropdown_gr_a.options.clear(); dropdown_gr_b.options.clear()
 
         for p in players:
@@ -172,7 +196,9 @@ def main(page: ft.Page):
             team_a_checkboxes.append(cba); column_team_a.controls.append(cba)
             cbb = ft.Checkbox(label=p['name'], value=False); cbb.data = p['id']
             team_b_checkboxes.append(cbb); column_team_b.controls.append(cbb)
-            dropdown_champion.options.append(ft.dropdown.Option(p['name']))
+
+            # Não usamos o dropdown_champion aqui, pois agora é automático
+
             dropdown_gr_a.options.append(ft.dropdown.Option(key=str(p['id']), text=p['name']))
             dropdown_gr_b.options.append(ft.dropdown.Option(key=str(p['id']), text=p['name']))
 
@@ -197,7 +223,7 @@ def main(page: ft.Page):
                 "is_double_points": checkbox_double_points.value
             }
             requests.post(f"{API_URL}/matches/", json=payload)
-            show_toast("Gravado!", "green")
+            show_toast("Gravado! GRs não pagaram.", "green")
             refresh_treasury(); refresh_leaderboard()
             for c in team_a_checkboxes + team_b_checkboxes: c.value = False
             dropdown_gr_a.value = None; dropdown_gr_b.value = None
@@ -206,7 +232,8 @@ def main(page: ft.Page):
 
     def create_player(e):
         if input_new_player.value:
-            requests.post(f"{API_URL}/players/", json={"name": input_new_player.value})
+            # Envia is_fixed agora
+            requests.post(f"{API_URL}/players/", json={"name": input_new_player.value, "is_fixed": checkbox_is_fixed.value})
             show_toast("Criado!"); input_new_player.value=""; refresh_admin_inputs()
 
     def remove_champion_handler(e):
@@ -217,13 +244,14 @@ def main(page: ft.Page):
         except: show_toast("Erro", "red")
 
     def close_season_handler(e):
-        if not dropdown_champion.value: show_toast("Escolhe o Campeão!", "red"); return
-        if btn_close_season.text == "Fechar Época": btn_close_season.text = "Tens a Certeza?"; btn_close_season.bgcolor = "orange"; page.update(); return
+        # Texto atualizado para a lógica automática
+        if btn_close_season.text == "Terminar campeonato": btn_close_season.text = "Confirmas o Campeão Automático?"; btn_close_season.bgcolor = "orange"; page.update(); return
         try:
-            requests.post(f"{API_URL}/season/close", json={"champion_name": dropdown_champion.value, "season_name": "Época"})
-            show_toast("Fechado e Arquivado!", "green"); refresh_leaderboard(); refresh_champions()
-            btn_close_season.text = "Fechar Época"; btn_close_season.bgcolor = "red"
-        except: show_toast("Erro", "red")
+            # Envia 'AUTO' como nome, o backend calcula
+            res = requests.post(f"{API_URL}/season/close", json={"champion_name": "AUTO", "season_name": "Época"})
+            show_toast(f"Feito! {res.json()['message']}", "green"); refresh_leaderboard(); refresh_champions()
+            btn_close_season.text = "Terminar campeonato"; btn_close_season.bgcolor = "red"
+        except Exception as err: show_toast(f"Erro: {err}", "red")
 
     # --- History Logic ---
     def load_archived_season(e):
@@ -269,16 +297,16 @@ def main(page: ft.Page):
         page.open(dlg)
 
     # --- Login ---
-    dlg_login = None
     def login_handler(e):
         val = input_password.value
-        auth = False
-        if val == ADMIN_PASSWORD: state["role"]="admin"; show_toast("Logado como admin 👑"); auth=True
-        elif val == TREASURER_PASSWORD: state["role"]="treasurer"; show_toast("Logado como tesoureiro 💰"); auth=True
-        elif val == MANAGER_PASSWORD: state["role"]="manager"; show_toast("Logado como manager ⚽"); auth=True
+        auth_success = False
+
+        if val == ADMIN_PASSWORD: state["role"]="admin"; show_toast("Logado como admin 👑"); auth_success=True
+        elif val == TREASURER_PASSWORD: state["role"]="treasurer"; show_toast("Logado como tesoureiro 💰"); auth_success=True
+        elif val == MANAGER_PASSWORD: state["role"]="manager"; show_toast("Logado como manager ⚽"); auth_success=True
         else: show_toast("Senha errada", "red")
 
-        if auth:
+        if auth_success:
             if dlg_login: page.close(dlg_login)
             build_layout()
 
@@ -289,10 +317,13 @@ def main(page: ft.Page):
     # BUTTONS & LAYOUT
     # =========================================================================
     btn_submit_payment = ft.ElevatedButton("Registar", on_click=submit_payment)
+    # Novo botão para cobrar mensalidades
+    btn_charge_monthly = ft.ElevatedButton("Cobrar Mensalidades (14€)", on_click=charge_monthly_fee, bgcolor="blue", color="white")
+
     btn_submit_game = ft.ElevatedButton("Gravar Jogo (3€)", on_click=submit_game)
     btn_create_player = ft.ElevatedButton("Criar", on_click=create_player)
     btn_remove_champion = ft.ElevatedButton("Remover Título", on_click=remove_champion_handler, color="orange")
-    btn_close_season = ft.ElevatedButton("Fechar Época", bgcolor="red", color="white", on_click=close_season_handler)
+    btn_close_season = ft.ElevatedButton("Terminar campeonato", bgcolor="red", color="white", on_click=close_season_handler)
 
     btn_history_icon = ft.IconButton(ft.Icons.HISTORY, on_click=open_history_dialog, tooltip="Arquivo")
     btn_logout_icon = ft.IconButton(ft.Icons.LOGOUT, on_click=logout_handler, tooltip="Sair")
@@ -321,6 +352,7 @@ def main(page: ft.Page):
     view_rules = ft.Column([
         ft.Divider(), ft.Text("VITÓRIA = 3 PONTOS | EMPATE = 2 | DERROTA = 1"),
         ft.Text("* -3 PONTOS POR FALTA", size=12), ft.Text("Critério: Nº Jogos | Min 50% Jogos", size=12, weight="bold"),
+        ft.Text("Desempate: 1.Pontos 2.Jogos 3.Classificação Época Anterior", size=10, italic=True),
         view_static_history
     ], spacing=5)
 
@@ -333,7 +365,7 @@ def main(page: ft.Page):
 
         if state["role"] in ["admin", "treasurer"]:
             refresh_treasury()
-            tabs.append(ft.Tab(text="Tesouraria", icon=ft.Icons.EURO, content=ft.Column([ft.Text("Gestão de Dívidas", size=20), ft.Row([dropdown_payer, input_payment_amount], alignment="center"), btn_submit_payment, ft.Divider(), column_debt_list], scroll="auto")))
+            tabs.append(ft.Tab(text="Tesouraria", icon=ft.Icons.EURO, content=ft.Column([ft.Text("Gestão de Dívidas", size=20), ft.Row([dropdown_payer, input_payment_amount], alignment="center"), btn_submit_payment, ft.Divider(), btn_charge_monthly, ft.Divider(), column_debt_list], scroll="auto")))
 
         if state["role"] in ["admin", "manager"]:
             refresh_admin_inputs()
@@ -343,10 +375,11 @@ def main(page: ft.Page):
                 ft.Text("Guarda-Redes (Não Pagam):", size=12, color="grey"),
                 ft.Row([dropdown_gr_a, dropdown_gr_b]),
                 dropdown_result, checkbox_double_points, btn_submit_game, ft.Divider(),
-                ft.Text("Gestão", weight="bold"), ft.Row([input_new_player, btn_create_player]), ft.Divider(),
+                # Atualizado para incluir a checkbox de Fixo
+                ft.Text("Gestão", weight="bold"), ft.Row([input_new_player, checkbox_is_fixed], alignment="center"), btn_create_player, ft.Divider(),
             ]
             if state["role"] == "admin":
-                admin_content.extend([ft.Text("Perigo / Correções", color="red"), dropdown_champion, btn_close_season, ft.Divider(), dropdown_remove_champion, btn_remove_champion])
+                admin_content.extend([ft.Text("Perigo / Correções", color="red"), btn_close_season, ft.Divider(), dropdown_remove_champion, btn_remove_champion])
             tabs.append(ft.Tab(text="Admin", icon=ft.Icons.SETTINGS, content=ft.Column(admin_content, scroll="auto")))
 
         page.add(ft.Tabs(selected_index=0, tabs=tabs, expand=True))
@@ -360,4 +393,5 @@ def main(page: ft.Page):
 
     refresh_leaderboard(); refresh_champions(); build_layout()
 
+# Mantive o assets_dir como tinhas
 app = ft.app(target=main, export_asgi_app=True, assets_dir="src/assets")
