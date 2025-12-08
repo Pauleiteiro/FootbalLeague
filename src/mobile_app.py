@@ -33,6 +33,7 @@ def main(page: ft.Page):
     """
     page.title = "Terças FC"
     page.theme_mode = ft.ThemeMode.DARK
+    page.bgcolor = ft.colors.GREY_900
     page.scroll = ft.ScrollMode.AUTO
     page.padding = 10
 
