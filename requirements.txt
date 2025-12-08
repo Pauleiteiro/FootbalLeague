@@ -1,8 +1,9 @@
 ## List of libraries
 
-flet
-requests
 fastapi
-uvicorn
+uvicorn[standard]
 sqlalchemy
+pydantic
+requests
+flet
 psycopg2-binary
