@@ -25,6 +25,10 @@ def main(page: ft.Page):
     page.padding = 10
 
     state = {"role": None}
+
+    # Variável para controlar a janela de login
+    dlg_login = None
+
     team_a_checkboxes = []
     team_b_checkboxes = []
 
@@ -44,7 +48,7 @@ def main(page: ft.Page):
     dropdown_champion = ft.Dropdown(label="Quem ganhou a época?")
     dropdown_remove_champion = ft.Dropdown(label="Remover Título de quem?", expand=True)
 
-    # GR DROPDOWNS (NOVO)
+    # GR DROPDOWNS
     dropdown_gr_a = ft.Dropdown(label="GR Equipa A (Não Paga)", expand=True)
     dropdown_gr_b = ft.Dropdown(label="GR Equipa B (Não Paga)", expand=True)
 
@@ -57,11 +61,11 @@ def main(page: ft.Page):
 
     # History
     dropdown_history_season = ft.Dropdown(label="Escolher Época", expand=True)
-    # FIX UI: Wrap content in Row to allow horizontal scrolling
     container_history_table = ft.Row(scroll=ft.ScrollMode.ALWAYS)
 
-    # Login
-    input_password = ft.TextField(label="Senha", password=True, on_submit=lambda e: login_handler(e))
+    # Login Input
+    # Definimos aqui para ser usado no dialog depois
+    input_password = ft.TextField(label="Senha", password=True)
 
     # =========================================================================
     # HELPERS
@@ -142,7 +146,7 @@ def main(page: ft.Page):
         column_team_a.controls.clear(); column_team_b.controls.clear()
         team_a_checkboxes.clear(); team_b_checkboxes.clear()
         dropdown_champion.options.clear()
-        dropdown_gr_a.options.clear(); dropdown_gr_b.options.clear() # Clear GRs
+        dropdown_gr_a.options.clear(); dropdown_gr_b.options.clear()
 
         for p in players:
             cba = ft.Checkbox(label=p['name'], value=False); cba.data = p['id']
@@ -151,7 +155,7 @@ def main(page: ft.Page):
             team_b_checkboxes.append(cbb); column_team_b.controls.append(cbb)
             dropdown_champion.options.append(ft.dropdown.Option(p['name']))
 
-            # Add to GR dropdowns
+            # GRs
             dropdown_gr_a.options.append(ft.dropdown.Option(key=str(p['id']), text=p['name']))
             dropdown_gr_b.options.append(ft.dropdown.Option(key=str(p['id']), text=p['name']))
 
@@ -163,7 +167,6 @@ def main(page: ft.Page):
         ids_b = [c.data for c in team_b_checkboxes if c.value]
         if not ids_a or not ids_b: show_toast("Falta jogadores!", "red"); return
 
-        # GR Logic
         gr_ids = []
         if dropdown_gr_a.value: gr_ids.append(int(dropdown_gr_a.value))
         if dropdown_gr_b.value: gr_ids.append(int(dropdown_gr_b.value))
@@ -173,7 +176,7 @@ def main(page: ft.Page):
                 "date": str(datetime.date.today()),
                 "result": dropdown_result.value,
                 "team_a_players": ids_a, "team_b_players": ids_b,
-                "goalkeepers": gr_ids, # Send GRs to backend
+                "goalkeepers": gr_ids,
                 "is_double_points": checkbox_double_points.value
             }
             requests.post(f"{API_URL}/matches/", json=payload)
@@ -205,7 +208,7 @@ def main(page: ft.Page):
             btn_close_season.text = "Fechar Época"; btn_close_season.bgcolor = "red"
         except: show_toast("Erro", "red")
 
-    # --- History Logic (FIXED UI & DELETE) ---
+    # --- History Logic ---
     def load_archived_season(e):
         if not dropdown_history_season.value: return
         full_hist = dropdown_history_season.data
@@ -224,8 +227,7 @@ def main(page: ft.Page):
         if not dropdown_history_season.value: return
         try:
             requests.delete(f"{API_URL}/history/{dropdown_history_season.value}")
-            show_toast("Época apagada do histórico!", "red")
-            page.dialog.open = False; page.update() # Close to refresh
+            show_toast("Apagado!", "red"); page.close(page.dialog)
         except: show_toast("Erro ao apagar", "red")
 
     def open_history_dialog(e):
@@ -238,25 +240,30 @@ def main(page: ft.Page):
 
         dropdown_history_season.on_change = load_archived_season
 
-        # Dialog with Delete Button
         dlg = ft.AlertDialog(
             title=ft.Text("Arquivo"),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Row([dropdown_history_season, ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Apagar esta época", on_click=delete_history_handler)]),
+                    ft.Row([dropdown_history_season, ft.IconButton(ft.Icons.DELETE, icon_color="red", tooltip="Apagar", on_click=delete_history_handler)]),
                     container_history_table
-                ], height=400, width=350, scroll="auto") # Scrollable Column
+                ], height=400, width=350, scroll="auto")
             )
         )
         page.open(dlg)
 
-    # --- Login ---
+    # --- Login Logic (CORRIGIDO) ---
     def login_handler(e):
         val = input_password.value
-        if val == ADMIN_PASSWORD: state["role"]="admin"; show_toast("Olá Mestre 👑"); build_layout()
-        elif val == TREASURER_PASSWORD: state["role"]="treasurer"; show_toast("Olá Tesoureiro 💰"); build_layout()
-        elif val == MANAGER_PASSWORD: state["role"]="manager"; show_toast("Olá Marcador ⚽"); build_layout()
+        auth_success = False
+
+        if val == ADMIN_PASSWORD: state["role"]="admin"; show_toast("Olá Mestre 👑"); auth_success=True
+        elif val == TREASURER_PASSWORD: state["role"]="treasurer"; show_toast("Olá Tesoureiro 💰"); auth_success=True
+        elif val == MANAGER_PASSWORD: state["role"]="manager"; show_toast("Olá Marcador ⚽"); auth_success=True
         else: show_toast("Senha errada", "red")
+
+        if auth_success:
+            if dlg_login: page.close(dlg_login) # AQUI ESTÁ O FIX: Fecha o popup
+            build_layout()
 
     def logout_handler(e):
         state["role"] = None; input_password.value = ""; show_toast("Sessão terminada"); build_layout()
@@ -271,8 +278,19 @@ def main(page: ft.Page):
     btn_close_season = ft.ElevatedButton("Fechar Época", bgcolor="red", color="white", on_click=close_season_handler)
 
     btn_history_icon = ft.IconButton(ft.Icons.HISTORY, on_click=open_history_dialog, tooltip="Arquivo")
-    btn_login_icon = ft.IconButton(ft.Icons.PERSON, on_click=lambda e: page.open(ft.AlertDialog(title=ft.Text("Login"), content=ft.Column([input_password, ft.ElevatedButton("Entrar", on_click=login_handler)], height=150, alignment="center"))), tooltip="Login")
     btn_logout_icon = ft.IconButton(ft.Icons.LOGOUT, on_click=logout_handler, tooltip="Sair")
+
+    def build_login_view():
+        nonlocal dlg_login
+        # Atualizamos o evento on_submit para garantir que funciona no enter
+        input_password.on_submit = login_handler
+        dlg_login = ft.AlertDialog(
+            title=ft.Text("Área Restrita"),
+            content=ft.Column([input_password, ft.ElevatedButton("Entrar", on_click=login_handler)], height=150, alignment="center")
+        )
+        page.open(dlg_login)
+
+    btn_login_icon = ft.IconButton(ft.Icons.PERSON, on_click=lambda e: build_login_view(), tooltip="Login")
 
     view_static_history = ft.Column([
         ft.Divider(), ft.Text("TÍTULOS DE CAMPEÃO (Pavilhão Sécil & Pavilhão Escola Luisa Todi):", weight="bold", size=12),
@@ -310,7 +328,7 @@ def main(page: ft.Page):
                 ft.Text("Registar Jogo", weight="bold"),
                 ft.Container(content=ft.Row([ft.Column([ft.Text("Eq. A", color="green"), column_team_a], expand=True, scroll="auto"), ft.VerticalDivider(), ft.Column([ft.Text("Eq. B", color="blue"), column_team_b], expand=True, scroll="auto")]), height=250, border=ft.border.all(1, "grey"), padding=5),
                 ft.Text("Guarda-Redes (Não Pagam):", size=12, color="grey"),
-                ft.Row([dropdown_gr_a, dropdown_gr_b]), # GRs row
+                ft.Row([dropdown_gr_a, dropdown_gr_b]),
                 dropdown_result, checkbox_double_points, btn_submit_game, ft.Divider(),
                 ft.Text("Gestão", weight="bold"), ft.Row([input_new_player, btn_create_player]), ft.Divider(),
             ]
