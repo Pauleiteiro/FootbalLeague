@@ -21,7 +21,6 @@ from pydantic import BaseModel
 # =============================================================================
 
 # Retrieve database URL from environment variables. Defaults to SQLite for local development.
-# In production (Render), this should point to a PostgreSQL instance (e.g., Supabase/Neon).
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./football.db")
 
 # Compatibility fix: SQLAlchemy requires 'postgresql://', but some providers return 'postgres://'
@@ -53,7 +52,7 @@ class MatchPlayer(Base):
     __tablename__ = "match_players"
     match_id = Column(Integer, ForeignKey("matches.id"), primary_key=True)
     player_id = Column(Integer, ForeignKey("players.id"), primary_key=True)
-    team = Column(String, nullable=False)  # 'A' or 'B'
+    team = Column(String, nullable=False)
 
 class Player(Base):
     """
@@ -64,9 +63,9 @@ class Player(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     is_active = Column(Boolean, default=True)
-    balance = Column(Float, default=0.0)  # Financial balance (negative means debt)
-    is_fixed = Column(Boolean, default=False)  # True = Monthly Fee, False = Pay-per-game
-    previous_rank = Column(Integer, default=0)  # Used for tie-breaking logic (historic performance)
+    balance = Column(Float, default=0.0)
+    is_fixed = Column(Boolean, default=False)
+    previous_rank = Column(Integer, default=0)
     matches = relationship("Match", secondary="match_players", back_populates="players")
 
 class Match(Base):
@@ -75,7 +74,7 @@ class Match(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False)
     result = Column(String, nullable=False)
-    is_double_points = Column(Boolean, default=False)  # Feature for season finales
+    is_double_points = Column(Boolean, default=False)
     players = relationship("Player", secondary="match_players", back_populates="matches")
 
 class Champion(Base):
@@ -104,6 +103,10 @@ class PlayerCreate(BaseModel):
     name: str
     is_fixed: bool = False
 
+class PlayerStatusUpdate(BaseModel):
+    """Schema for updating player status (Fixed/Guest)."""
+    is_fixed: bool
+
 class PaymentSchema(BaseModel):
     player_id: int
     amount: float
@@ -123,7 +126,7 @@ class MatchCreate(BaseModel):
     result: MatchResult
     team_a_players: List[int]
     team_b_players: List[int]
-    goalkeepers: List[int] = []  # List of IDs exempted from payment
+    goalkeepers: List[int] = []
     is_double_points: bool = False
 
 class ChampionSchema(BaseModel):
@@ -148,9 +151,9 @@ class ArchiveSchema(BaseModel):
 # =============================================================================
 
 app = FastAPI(
-    title="Terças FC API V4.3",
+    title="Terças FC API V4.4",
     description="REST API for managing a recreational football league.",
-    version="4.3.0"
+    version="4.4.0"
 )
 
 def get_db():
@@ -164,19 +167,8 @@ def get_db():
 def calculate_table_stats(db: Session) -> List[Dict[str, Any]]:
     """
     Calculates the live leaderboard based on match history.
-
-    Logic:
-    - Only 'Fixed' players appear on the main leaderboard.
-    - Points: Win (3), Draw (2), Loss (1). Double points if flag is set.
-    - Tie-breaking hierarchy:
-        1. Total Points (Desc)
-        2. Games Played (Desc)
-        3. Previous Season Rank (Asc / Lower is better)
-
-    Returns:
-        List of dictionaries containing stats for each player, sorted by rank.
+    Only 'Fixed' players appear on the main leaderboard.
     """
-    # Fetch only active FIXED players for the leaderboard
     players = db.query(Player).filter(Player.is_active == True, Player.is_fixed == True).all()
     matches = db.query(Match).order_by(Match.date).all()
 
@@ -192,13 +184,11 @@ def calculate_table_stats(db: Session) -> List[Dict[str, Any]]:
 
         for link in links:
             pid = link.player_id
-            # Skip guests if they are not in the stats dictionary
             if pid not in stats: continue
 
             stats[pid]["games_played"] += 1
             res_char = ""
 
-            # Determine outcome based on match result and player's team
             if m.result == "DRAW":
                 stats[pid]["draws"] += 1
                 stats[pid]["points"] += (2 * multiplier)
@@ -214,14 +204,11 @@ def calculate_table_stats(db: Session) -> List[Dict[str, Any]]:
 
             stats[pid]["form"].append(res_char)
 
-    # Convert to list and process recent form (last 5 games)
     res = list(stats.values())
     for p in res:
         p["form"] = p["form"][-5:]
 
-    # SORTING ALGORITHM (Business Rule Implementation)
-    # Using negative ranking for 'previous_rank' because sort is reverse=True.
-    # Lower previous rank (e.g. 1st) becomes -1, which is > -10 (10th place).
+    # Sorting Logic: Points (Desc) -> Games (Desc) -> Previous Rank (Asc/Lower is better)
     res.sort(
         key=lambda x: (
             x["points"],
@@ -241,7 +228,7 @@ def get_table(db: Session = Depends(get_db)):
 
 @app.post("/players/", response_model=PlayerSchema)
 def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
-    """Registers a new player. Validates unique name constraint."""
+    """Registers a new player."""
     if db.query(Player).filter(Player.name == player.name).first():
         raise HTTPException(400, "Player already exists")
 
@@ -257,19 +244,30 @@ def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
     db.refresh(new_player)
     return new_player
 
+@app.put("/players/{player_id}/status")
+def update_player_status(player_id: int, status: PlayerStatusUpdate, db: Session = Depends(get_db)):
+    """Updates a player's status (Fixed vs Guest)."""
+    p = db.query(Player).filter(Player.id == player_id).first()
+    if not p:
+        raise HTTPException(404, "Player not found")
+
+    p.is_fixed = status.is_fixed
+    db.commit()
+    return {"message": "Player status updated successfully"}
+
 @app.get("/players/", response_model=List[PlayerSchema])
 def read_players(db: Session = Depends(get_db)):
-    """Returns all active players (Fixed + Guests) for match selection."""
+    """Returns all active players."""
     return db.query(Player).filter(Player.is_active == True).all()
 
 @app.get("/players/all", response_model=List[PlayerSchema])
 def read_all_players(db: Session = Depends(get_db)):
-    """Returns all players including inactive ones for financial auditing."""
+    """Returns all players including inactive ones."""
     return db.query(Player).all()
 
 @app.post("/players/pay")
 def register_payment(payment: PaymentSchema, db: Session = Depends(get_db)):
-    """Registers a monetary payment to update player balance."""
+    """Registers a monetary payment."""
     p = db.query(Player).filter(Player.id == payment.player_id).first()
     if not p:
         raise HTTPException(404, "Player not found")
@@ -279,10 +277,7 @@ def register_payment(payment: PaymentSchema, db: Session = Depends(get_db)):
 
 @app.post("/players/charge_monthly")
 def charge_monthly_fees(db: Session = Depends(get_db)):
-    """
-    Batch operation to charge monthly fees.
-    Applies only to 'Fixed' players.
-    """
+    """Charges monthly fee to all fixed players."""
     fixed_players = db.query(Player).filter(Player.is_fixed == True).all()
     count = 0
     for p in fixed_players:
@@ -293,12 +288,7 @@ def charge_monthly_fees(db: Session = Depends(get_db)):
 
 @app.post("/matches/")
 def create_match(match: MatchCreate, db: Session = Depends(get_db)):
-    """
-    Records a match result and applies financial logic.
-    - Goalkeepers are exempt from fees.
-    - Fixed players do not pay per game (covered by monthly fee).
-    - Guest players are charged per game (3.0 units).
-    """
+    """Records a match result and applies financial logic."""
     db_match = Match(date=match.date, result=match.result, is_double_points=match.is_double_points)
     db.add(db_match)
     db.commit()
@@ -310,10 +300,8 @@ def create_match(match: MatchCreate, db: Session = Depends(get_db)):
         team = "A" if pid in match.team_a_players else "B"
         db.add(MatchPlayer(match_id=db_match.id, player_id=pid, team=team))
 
-        # Financial Logic Check
         if pid not in match.goalkeepers:
             p = db.query(Player).filter(Player.id == pid).first()
-            # Only charge if player exists AND is NOT fixed (Guest)
             if p and not p.is_fixed:
                 p.balance -= 3.0
 
@@ -324,12 +312,12 @@ def create_match(match: MatchCreate, db: Session = Depends(get_db)):
 
 @app.get("/champions/", response_model=List[ChampionSchema])
 def get_champions(db: Session = Depends(get_db)):
-    """Returns list of past champions sorted by number of titles."""
+    """Returns list of past champions."""
     return db.query(Champion).order_by(Champion.titles.desc()).all()
 
 @app.post("/champions/remove")
 def remove_champion(data: PlayerCreate, db: Session = Depends(get_db)):
-    """Admin function to correct champion stats."""
+    """Manually removes a title from a player."""
     champ = db.query(Champion).filter(Champion.name == data.name).first()
     if not champ:
         raise HTTPException(404, "Champion not found")
@@ -344,35 +332,24 @@ def remove_champion(data: PlayerCreate, db: Session = Depends(get_db)):
 
 @app.post("/season/close")
 def close_season(data: CloseSeasonSchema, db: Session = Depends(get_db)):
-    """
-    Closes the current season.
-    1. Calculates final standings.
-    2. Identifies the automated champion.
-    3. Archives data.
-    4. Updates 'previous_rank' for tie-breaking in the next season.
-    5. Resets match data for a fresh start.
-    """
+    """Closes the current season and archives data."""
     final_stats = calculate_table_stats(db)
     if not final_stats:
-        raise HTTPException(400, "No match data available to close season")
+        raise HTTPException(400, "No match data available")
 
-    # Determine Champion automatically (First in sorted list)
     champion_name = final_stats[0]["name"]
 
-    # Update Champions Table
     champ = db.query(Champion).filter(Champion.name == champion_name).first()
     if champ:
         champ.titles += 1
     else:
         db.add(Champion(name=champion_name, titles=1))
 
-    # Update Rankings for next season's tie-breaker logic
     for index, player_stat in enumerate(final_stats):
         p = db.query(Player).filter(Player.id == player_stat['id']).first()
         if p:
             p.previous_rank = index + 1
 
-    # Create Archive Snapshot
     archive = SeasonArchive(
         season_name=f"{data.season_name} ({date.today()})",
         date=date.today(),
@@ -380,7 +357,6 @@ def close_season(data: CloseSeasonSchema, db: Session = Depends(get_db)):
     )
     db.add(archive)
 
-    # Reset active match data
     db.query(MatchPlayer).delete()
     db.query(Match).delete()
     db.commit()
