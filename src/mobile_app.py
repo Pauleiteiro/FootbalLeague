@@ -519,7 +519,6 @@ def main(page: ft.Page):
                 ft.Divider(),
             ]
             if state["role"] == "admin":
-                # FIXED: REMOVED dropdown_champion HERE TO PREVENT CRASH
                 admin_content.extend([
                     ft.Text("Perigo / Correções", color="red"),
                     btn_close_season,
