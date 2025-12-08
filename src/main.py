@@ -13,15 +13,11 @@ from pydantic import BaseModel
 # =============================================================================
 # 1. DATABASE SETUP
 # =============================================================================
-
-# Lê a variável de ambiente. Se não existir, usa SQLite.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./football.db")
 
-# Fix para compatibilidade Render/Supabase (postgres -> postgresql)
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# LOG DE DIAGNÓSTICO
 if "sqlite" in DATABASE_URL:
     print("⚠️ ATENÇÃO: A APP ESTÁ A USAR SQLITE (DADOS TEMPORÁRIOS)!")
 else:
@@ -77,7 +73,6 @@ class SeasonArchive(Base):
     data_json = Column(Text)
     date = Column(Date)
 
-# Cria as tabelas se não existirem
 Base.metadata.create_all(bind=engine)
 
 # =============================================================================
@@ -131,9 +126,8 @@ class ArchiveSchema(BaseModel):
 # 4. API LOGIC
 # =============================================================================
 
-app = FastAPI(title="Terças FC API V4.2")
+app = FastAPI(title="Terças FC API V4.3")
 
-# Dependência de Base de Dados (Corrigida Indentação)
 def get_db():
     db = SessionLocal()
     try:
@@ -142,24 +136,15 @@ def get_db():
         db.close()
 
 def calculate_table_stats(db: Session):
-    players = db.query(Player).filter(Player.is_active == True).all()
+    # Apenas jogadores FIXOS entram na tabela
+    players = db.query(Player).filter(Player.is_active == True, Player.is_fixed == True).all()
     matches = db.query(Match).order_by(Match.date).all()
 
-    stats = {
-        p.id: {
-            "id": p.id,
-            "name": p.name,
-            "games_played": 0,
-            "wins": 0,
-            "draws": 0,
-            "losses": 0,
-            "points": 0,
-            "form": [],
-            "previous_rank": p.previous_rank,
-            "is_fixed": p.is_fixed
-        }
-        for p in players
-    }
+    stats = {p.id: {
+        "id": p.id, "name": p.name,
+        "games_played": 0, "wins": 0, "draws": 0, "losses": 0, "points": 0,
+        "form": [], "previous_rank": p.previous_rank, "is_fixed": p.is_fixed
+    } for p in players}
 
     for m in matches:
         multiplier = 2 if m.is_double_points else 1
@@ -170,30 +155,18 @@ def calculate_table_stats(db: Session):
 
             stats[pid]["games_played"] += 1
             res_char = ""
-
             if m.result == "DRAW":
-                stats[pid]["draws"] += 1
-                stats[pid]["points"] += (2 * multiplier)
-                res_char = "D"
+                stats[pid]["draws"] += 1; stats[pid]["points"] += (2 * multiplier); res_char="D"
             elif (m.result == "TEAM_A" and link.team == "A") or (m.result == "TEAM_B" and link.team == "B"):
-                stats[pid]["wins"] += 1
-                stats[pid]["points"] += (3 * multiplier)
-                res_char = "W"
+                stats[pid]["wins"] += 1; stats[pid]["points"] += (3 * multiplier); res_char="W"
             else:
-                stats[pid]["losses"] += 1
-                stats[pid]["points"] += (1 * multiplier)
-                res_char = "L"
-
+                stats[pid]["losses"] += 1; stats[pid]["points"] += (1 * multiplier); res_char="L"
             stats[pid]["form"].append(res_char)
 
     res = list(stats.values())
-    for p in res:
-        p["form"] = p["form"][-5:]
+    for p in res: p["form"] = p["form"][-5:]
 
-    # CRITÉRIO DE DESEMPATE FINAL
-    # 1. Pontos (Maior)
-    # 2. Jogos (Maior)
-    # 3. Rank Anterior (Menor é melhor, por isso usamos negativo para ordenar desc)
+    # Critério: Pontos > Jogos > Melhor Rank Anterior (Menor é melhor, por isso negativo)
     res.sort(
         key=lambda x: (
             x["points"],
@@ -204,7 +177,7 @@ def calculate_table_stats(db: Session):
     )
     return res
 
-# --- ENDPOINTS ---
+# -- ENDPOINTS --
 
 @app.get("/table/")
 def get_table(db: Session = Depends(get_db)):
@@ -222,17 +195,18 @@ def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
 
 @app.get("/players/", response_model=List[PlayerSchema])
 def read_players(db: Session = Depends(get_db)):
+    # Retorna TODOS (para convocar jogos)
     return db.query(Player).filter(Player.is_active == True).all()
 
 @app.get("/players/all", response_model=List[PlayerSchema])
 def read_all_players(db: Session = Depends(get_db)):
+    # Retorna TODOS (para tesouraria)
     return db.query(Player).all()
 
 @app.post("/players/pay")
 def register_payment(payment: PaymentSchema, db: Session = Depends(get_db)):
     p = db.query(Player).filter(Player.id == payment.player_id).first()
-    if not p:
-        raise HTTPException(404, "Not found")
+    if not p: raise HTTPException(404, "Not found")
     p.balance += payment.amount
     db.commit()
     return {"message": "Paid"}
@@ -254,18 +228,17 @@ def create_match(match: MatchCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_match)
 
-    GAME_COST = 3.0
     all_pids = match.team_a_players + match.team_b_players
 
     for pid in all_pids:
         team = "A" if pid in match.team_a_players else "B"
         db.add(MatchPlayer(match_id=db_match.id, player_id=pid, team=team))
 
-        # Só cobra se não for GR e não for Fixo (Fixo já paga mensalidade)
         if pid not in match.goalkeepers:
             p = db.query(Player).filter(Player.id == pid).first()
+            # Só cobra ao jogo se for CONVIDADO (não fixo)
             if p and not p.is_fixed:
-                p.balance -= GAME_COST
+                p.balance -= 3.0
 
     db.commit()
     return {"message": "Match created"}
@@ -279,37 +252,28 @@ def get_champions(db: Session = Depends(get_db)):
 @app.post("/champions/remove")
 def remove_champion(data: PlayerCreate, db: Session = Depends(get_db)):
     champ = db.query(Champion).filter(Champion.name == data.name).first()
-    if not champ:
-        raise HTTPException(404, "Not found")
-
-    if champ.titles > 1:
-        champ.titles -= 1
-    else:
-        db.delete(champ)
-
+    if not champ: raise HTTPException(404, "Not found")
+    if champ.titles > 1: champ.titles -= 1
+    else: db.delete(champ)
     db.commit()
     return {"message": "Title removed"}
 
 @app.post("/season/close")
 def close_season(data: CloseSeasonSchema, db: Session = Depends(get_db)):
     final_stats = calculate_table_stats(db)
-    if not final_stats:
-        raise HTTPException(400, "Sem dados")
+    if not final_stats: raise HTTPException(400, "Sem dados")
 
-    # Campeão Automático (Primeiro da lista ordenada)
+    # Campeão Automático
     champion_name = final_stats[0]["name"]
 
     champ = db.query(Champion).filter(Champion.name == champion_name).first()
-    if champ:
-        champ.titles += 1
-    else:
-        db.add(Champion(name=champion_name, titles=1))
+    if champ: champ.titles += 1
+    else: db.add(Champion(name=champion_name, titles=1))
 
     # Atualizar Rankings
     for index, player_stat in enumerate(final_stats):
         p = db.query(Player).filter(Player.id == player_stat['id']).first()
-        if p:
-            p.previous_rank = index + 1
+        if p: p.previous_rank = index + 1
 
     archive = SeasonArchive(season_name=f"{data.season_name} ({date.today()})", date=date.today(), data_json=json.dumps(final_stats))
     db.add(archive)
@@ -326,8 +290,7 @@ def get_history(db: Session = Depends(get_db)):
 @app.delete("/history/{archive_id}")
 def delete_history_entry(archive_id: int, db: Session = Depends(get_db)):
     archive = db.query(SeasonArchive).filter(SeasonArchive.id == archive_id).first()
-    if not archive:
-        raise HTTPException(404, "Not found")
+    if not archive: raise HTTPException(404, "Not found")
     db.delete(archive)
     db.commit()
     return {"message": "Deleted"}
