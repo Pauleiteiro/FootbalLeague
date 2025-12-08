@@ -273,9 +273,9 @@ def main(page: ft.Page):
     def login_handler(e):
         val = input_password.value
         auth = False
-        if val == ADMIN_PASSWORD: state["role"]="admin"; show_toast("Olá Mestre 👑"); auth=True
-        elif val == TREASURER_PASSWORD: state["role"]="treasurer"; show_toast("Olá Tesoureiro 💰"); auth=True
-        elif val == MANAGER_PASSWORD: state["role"]="manager"; show_toast("Olá Marcador ⚽"); auth=True
+        if val == ADMIN_PASSWORD: state["role"]="admin"; show_toast("Logado como admin 👑"); auth=True
+        elif val == TREASURER_PASSWORD: state["role"]="treasurer"; show_toast("Logado como tesoureiro 💰"); auth=True
+        elif val == MANAGER_PASSWORD: state["role"]="manager"; show_toast("Logado como manager ⚽"); auth=True
         else: show_toast("Senha errada", "red")
 
         if auth:
