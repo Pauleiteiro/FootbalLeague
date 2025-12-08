@@ -6,10 +6,15 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import date
 import enum
+import os
 
 # --- 1. CONFIGURAÇÃO BASE DE DADOS ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./tercasfc.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tercasfc.db")
+
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
