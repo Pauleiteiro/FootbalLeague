@@ -39,7 +39,7 @@ jobs:
           FLUTTER_BUILD_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           FLUTTER_BUILD_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          flet build apk
+          flet build apk --module-name src.mobile_app
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
