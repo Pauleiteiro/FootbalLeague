@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system dependencies # <--- NOVO PASSO CRÍTICO AQUI
+      - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libpq-dev gcc
 
       - name: Install Flet Build Tool
@@ -26,16 +26,18 @@ jobs:
           flutter-version: '3.x'
 
       - name: Create Android Directories
-        # Cria as pastas necessárias para guardar a chave
         run: mkdir -p android/app
 
       - name: Create Keystore File
-        # Decodifica a chave segura Base64 e escreve no ficheiro .jks
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
+      # --- NOVO PASSO: Trocar para os requirements limpos do Android ---
+      - name: Use Mobile Requirements
+        run: cp requirements_apk.txt requirements.txt
+      # -----------------------------------------------------------------
+
       - name: Build APK
-        # Define variáveis de ambiente para a assinatura, resolvendo o erro de argumentos
         env:
           FLUTTER_BUILD_STORE_FILE: android/app/upload-keystore.jks
           FLUTTER_BUILD_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
