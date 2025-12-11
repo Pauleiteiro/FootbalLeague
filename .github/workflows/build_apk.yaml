@@ -34,7 +34,11 @@ jobs:
 
       - name: Use Mobile Requirements
         run: cp requirements_apk.txt requirements.txt
-      # -----------------------------------------------------------------
+
+      - name: Create .env file for APK
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
 
       - name: Build APK
         env:
@@ -46,7 +50,6 @@ jobs:
           flet build apk --module-name run \
             --product "Terças FC" \
             --org "com.tercasfc" \
-            --android-permissions android.permission.INTERNET
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
