@@ -1,55 +1,89 @@
+import 'dart:async'; // <--- Necessário para o Timer
 import 'package:flutter/material.dart';
 import '../models/match.dart';
 import '../services/api_service.dart';
-import '../services/auth_service.dart'; // <--- Precisamos disto para saber quem tu és
+import '../services/auth_service.dart';
 
-class MatchCard extends StatelessWidget {
+class MatchCard extends StatefulWidget {
   final Match match;
-
-  // Callback para avisar o ecrã principal para atualizar os números
   final VoidCallback? onUpdate;
 
   const MatchCard({super.key, required this.match, this.onUpdate});
 
-  // Função que trata do clique
+  @override
+  State<MatchCard> createState() => _MatchCardState();
+}
+
+class _MatchCardState extends State<MatchCard> {
+  Timer? _timer;
+  String _timeLeft = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer
+        ?.cancel(); // Matar o timer quando saímos do ecrã para não gastar bateria
+    super.dispose();
+  }
+
+  void _startTimer() {
+    // Só vale a pena contar se estiver aberto e tivermos uma data de fecho
+    if (!widget.match.isOpen || widget.match.closeDate == null) {
+      setState(() => _timeLeft = "Encerrado");
+      return;
+    }
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final now = DateTime.now();
+      final difference = widget.match.closeDate!.difference(now);
+
+      if (difference.isNegative) {
+        timer.cancel();
+        setState(() => _timeLeft = "Tempo Esgotado!");
+      } else {
+        // Formatar para HH:MM:SS
+        final hours = difference.inHours.toString().padLeft(2, '0');
+        final minutes = (difference.inMinutes % 60).toString().padLeft(2, '0');
+        final seconds = (difference.inSeconds % 60).toString().padLeft(2, '0');
+
+        setState(() {
+          _timeLeft = "$hours:$minutes:$seconds";
+        });
+      }
+    });
+  }
+
   void _vote(BuildContext context, String status) async {
-    // 1. Quem sou eu?
     final user = await AuthService().getUserSession();
-    if (user == null) return; // Se não tiver logado, não faz nada (segurança)
+    if (user == null) return;
 
-    // 2. Enviar voto
     final api = ApiService();
-    final success = await api.updateAttendance(match.id, user['id'], status);
+    final success = await api.updateAttendance(
+      widget.match.id,
+      user['id'],
+      status,
+    );
 
-    // 3. Feedback visual
-    if (success) {
+    if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            status == 'going'
-                ? "Confirmado! Vamos a isso! ⚽"
-                : "Falhaste a convocatória. 😢",
+            status == 'going' ? "Confirmado! ⚽" : "Falhaste a convocatória. 😢",
           ),
           backgroundColor: status == 'going' ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 2),
         ),
       );
-      // Pede para atualizar a tabela/contadores se possível
-      if (onUpdate != null) onUpdate!();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erro ao guardar. Verifica a internet.")),
-      );
+      if (widget.onUpdate != null) widget.onUpdate!();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Texto de estado
-    String statusText = match.isOpen
-        ? "Convocatória Aberta 🟢"
-        : "Convocatória Fechada 🔴";
-
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -70,18 +104,50 @@ class MatchCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(
-            statusText,
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-            ),
+          // CABEÇALHO COM TIMER
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "PRÓXIMO JOGO ⚽",
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              // O NOSSO TIMER AQUI
+              if (widget.match.isOpen)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.timer, size: 12, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        _timeLeft,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 10),
 
-          // Detalhes do Jogo
+          const SizedBox(height: 15),
+
+          // DETALHES
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -89,7 +155,7 @@ class MatchCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    match.date,
+                    widget.match.date,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -97,7 +163,7 @@ class MatchCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    "${match.location} • ${match.opponent}",
+                    "${widget.match.location} • ${widget.match.opponent}",
                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                 ],
@@ -112,7 +178,7 @@ class MatchCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  match.time,
+                  widget.match.time,
                   style: const TextStyle(
                     color: Colors.yellow,
                     fontSize: 22,
@@ -124,16 +190,18 @@ class MatchCard extends StatelessWidget {
           ),
           const Divider(color: Colors.white24, height: 30),
 
-          // Botões de Ação
-          if (!match.isOpen)
+          // BOTÕES
+          if (!widget.match.isOpen)
             Container(
-              padding: const EdgeInsets.all(10),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white10,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Text(
                 "Inscrições encerradas.",
+                textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70),
               ),
             )
@@ -142,7 +210,7 @@ class MatchCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _vote(context, 'going'), // <--- VOU
+                    onPressed: () => _vote(context, 'going'),
                     icon: const Icon(Icons.check_circle, color: Colors.white),
                     label: const Text(
                       "VOU",
@@ -156,8 +224,7 @@ class MatchCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () =>
-                        _vote(context, 'not_going'), // <--- NÃO VOU
+                    onPressed: () => _vote(context, 'not_going'),
                     icon: const Icon(Icons.cancel, color: Colors.white),
                     label: const Text(
                       "NÃO",
@@ -173,7 +240,7 @@ class MatchCard extends StatelessWidget {
 
           const SizedBox(height: 10),
           Text(
-            "${match.confirmedPlayers} Jogadores confirmados",
+            "${widget.match.confirmedPlayers} Jogadores confirmados",
             style: const TextStyle(
               color: Colors.grey,
               fontSize: 12,

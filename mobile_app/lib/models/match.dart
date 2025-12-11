@@ -6,6 +6,7 @@ class Match {
   final String opponent;
   final int confirmedPlayers;
   final bool isOpen;
+  final DateTime? closeDate;
 
   Match({
     required this.id,
@@ -15,6 +16,7 @@ class Match {
     required this.opponent,
     required this.confirmedPlayers,
     required this.isOpen,
+    this.closeDate,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,9 @@ class Match {
       opponent: json['opponent'] ?? "Treino",
       confirmedPlayers: json['confirmed_players'] ?? 0,
       isOpen: json['is_open'] ?? false,
+      closeDate: json['close_date'] != null
+          ? DateTime.parse(json['close_date'])
+          : null,
     );
   }
 }

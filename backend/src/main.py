@@ -340,7 +340,6 @@ def get_next_match(db: Session = Depends(get_db)):
 
     match_dt = datetime.strptime(f"{next_match.date} {next_match.time}", "%Y-%m-%d %H:%M")
     
-    # AQUI: Guardamos o close_dt em vez de deitar fora
     is_open, open_dt, close_dt = is_convocation_open(match_dt) 
     
     confirmed_count = db.query(Attendance)\
