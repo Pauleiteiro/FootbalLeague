@@ -43,7 +43,10 @@ jobs:
           FLUTTER_BUILD_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           FLUTTER_BUILD_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          flet build apk --module-name run
+          flet build apk --module-name run \
+            --product "Terças FC" \
+            --org "com.tercasfc" \
+            --android-permissions android.permission.INTERNET
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

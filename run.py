@@ -4,4 +4,4 @@ import flet as ft
 from src.mobile_app import main
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="src/assets")
+    ft.app(target=main, assets_dir="assets")
